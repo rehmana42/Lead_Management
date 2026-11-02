@@ -44,16 +44,20 @@ export const sendMessage = async () => {
     
     const user=await UserModel.findOne({admin:true}).populate(
       {
+       path:'leads',
+      match:{
         
-        path:'leads',
+       
  msgSend: false,
       intrested: true,
       converted: false,
       
       }
+    }
     )
     const leads=user.leads
     console.log(leads)
+    console.log(leads.length)
 
 
     
@@ -148,14 +152,14 @@ console.log(phone);
 
         console.log("Sending to:", recipientJid);
 
-        const result = await whatsapp.sendMessage(
-          recipientJid,
-          {
-            text: message,
-          }
-        );
+        // const result = await whatsapp.sendMessage(
+        //   recipientJid,
+        //   {
+        //     text: message,
+        //   }
+        // );
 
-        console.log("Baileys response:", result);
+        // console.log("Baileys response:", result);
 
         // ==================================
         // UPDATE DATABASE

@@ -1,5 +1,5 @@
 import express from "express"
-import { GenerateLead, getLeads, notIntrested, SaveLead, setConverted, setReminder } from "../controller/leadController.js"
+import { GenerateLead, getLeads, notIntrested, SaveLead, SendMessage, setConverted, setReminder } from "../controller/leadController.js"
 import {  addMember, getWhatsAppQRController, getWhatsAppStatusController,  logoutWhatsAppController, reconnectWhatsAppController } from "../controller/whatsappController.js"
 import {  Login,  logout,  Registor } from "../controller/UserController.js"
 import { AuthUser } from "../middleware/Auth.js"
@@ -22,6 +22,7 @@ mainRouter.post("/not-intrested",AuthUser,notIntrested)
 // converting the lead
 mainRouter.post("/set-converted",AuthUser,setConverted)
 mainRouter.post("/logout",AuthUser,logout)
+mainRouter.post("/send-message",AuthUser,SendMessage)
 
 
 

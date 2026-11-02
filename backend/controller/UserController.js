@@ -47,6 +47,7 @@ catch(e){
 export const Login=async(req,res)=>{
     try{
        const {email,password}=req.body
+       
        console.log(password)
         const user=await UserModel.findOne({email})
         if(!user)return res.json({success:false,error:'user not found'})

@@ -27,8 +27,9 @@ import axios from "axios";
 import { LeadContext } from "@/Context/LeadContext";
 import { toast } from "react-toastify";
 
+
 export default function LeadsDashboard() {
-  const { backendUrl, getCookie } = useContext(LeadContext);
+  const { backendUrl, getCookie , navigate} = useContext(LeadContext);
   const token = getCookie("token");
 
   const [leads, setLeads] = useState([]);
@@ -262,45 +263,30 @@ useEffect(()=>{
 
 
 // converting the lead
-const setConverted =(id)=>{
+const setConverted =async(id)=>{
 try{
- const  response=axios.post(`${backendUrl}/set-converetd/`,{id},{headers:{token}})
-
+  setLoading(true)
+  console.log(id)
+ const  response=await axios.post(`${backendUrl}/set-converted`,{id},{headers:{token}})
+ 
+console.log(response)
  if(response.data.success ===true){
-  toast.success("")
+  toast.success(" lead converted success full")
+  setLoading(false)
  }
 }
 catch(e){
   console.log(e.message )
+  setLoading(false)
+}
+finally{
+  setLoading(false)
 }
 
 }
 
 
-  // add member 
-  const add=async()=>{
-    try{
-      let phone =[]
-      
-      console.log("lala")
-
-      leads.forEach(e => {
-        
-        if(e.phone!=""){
-          phone.push(e.phone)
-        }
-      });
-
-      console.log(phone)
-
-
-      const response=await axios.post(`${backendUrl}/add`,{"phone":phone},{headers:{token}})
-      console.log(response)
-    }
-    catch(e){
-      console.log(e.message)
-    }
-  }
+ 
 
   // ================= EXPORT EXCEL =================
 
@@ -368,6 +354,34 @@ catch(e){
       toast.error("Excel export failed");
     }
   };
+
+
+// send whatsApp message 
+const sendMessage =async(lead)=>{
+  try{
+    setLoading(true)
+    const response= await axios.post(`${backendUrl}/send-message`,{lead},{headers:{token}})
+    console.log(response)
+    if(response?.data?.success ===true){
+      toast.success("message send successfully")
+      // window.location.reload()
+    }
+    else{
+      toast.error(response?.data?.error)
+      setLoading(false)
+    }
+
+  }
+  catch(e){
+    console.log(e.message)
+    toast.error(e.message)
+    setLoading(false)
+  }
+  finally{
+    setLoading(false)
+  }
+
+}
 
   // ================= COMMON STYLES =================
 
@@ -444,7 +458,9 @@ catch(e){
 <div className="mb-7 grid grid-cols-1 gap-4 sm:grid-cols-2">
 
   {/* INTERESTED LEADS */}
-  <div className="group relative overflow-hidden rounded-2xl border border-[#d5d0c3] bg-[#f5f3ec] p-5 shadow-[inset_2px_2px_2px_#ffffff,5px_7px_16px_rgba(0,0,0,0.12)] transition-all duration-300 hover:-translate-y-1">
+  <div
+  onClick={()=>{ navigate('/converted')}}
+  className="group relative overflow-hidden rounded-2xl border border-[#d5d0c3] bg-[#f5f3ec] p-5 shadow-[inset_2px_2px_2px_#ffffff,5px_7px_16px_rgba(0,0,0,0.12)] transition-all duration-300 hover:-translate-y-1">
 
     <div className="flex items-start justify-between">
 
@@ -458,7 +474,9 @@ catch(e){
 
     </div>
 
-    <div className="mt-6">
+    <div className="mt-6"
+    
+    >
       <h3 className="text-4xl font-bold tabular-nums tracking-tight">
         {leads?.filter(e=>e.converted === true).length}
       </h3>
@@ -475,9 +493,7 @@ catch(e){
     <div className="mt-5 h-1 w-full rounded-full bg-green-100">
       <div
         className="h-full rounded-full bg-green-600 transition-all duration-500"
-        style={{
-          width: `${leads.length ? (interestedLeads / leads.length) * 100 : 0}%`
-        }}
+       
       />
     </div>
 
@@ -515,9 +531,7 @@ catch(e){
     <div className="mt-5 h-1 w-full rounded-full bg-red-100">
       <div
         className="h-full rounded-full bg-red-500 transition-all duration-500"
-        style={{
-          width: `${leads.length ? (notInterestedLeads / leads.length) * 100 : 0}%`
-        }}
+    
       />
     </div>
 
@@ -563,15 +577,7 @@ catch(e){
               </button>
 
 
-              {/* <button
-                type="button"
-                onClick={add}
-                disabled={!filteredLeads.length}
-                className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg border border-neutral-700 bg-neutral-950 px-5 text-xs font-bold text-white hover:bg-neutral-800 disabled:opacity-50"
-              >
-                <Download size={16} />
-                Add Group
-              </button> */}
+              
 
               {/* SEARCH */}
 
@@ -929,6 +935,19 @@ catch(e){
 
                     <div className="mt-4 grid grid-cols-2 gap-2 border-t border-[#d5d0c3] pt-4">
 
+
+                        
+                             <button
+                              type="button"
+                              onClick={() => sendMessage(lead)}
+                              className={`${yellowBtn} bg-green-400 min-h-9 w-full gap-1 px-1.5 text-[11px]`}
+                            >
+
+                              <Bell size={12} className="shrink-0" />
+                              Send Message
+
+                            </button>
+
                       <button
                         type="button"
                         onClick={() => openReminder(lead)}
@@ -948,6 +967,9 @@ catch(e){
                       </button>
 
                         <button
+                         onClick={()=>{
+                          setConverted(lead._id)
+                         }}
                         type="button"
                         
                         className={`${btn} min-h-10 px-2 text-neutral-600 hover:text-green-600`}
@@ -1219,6 +1241,19 @@ catch(e){
 
                           <div className="flex w-full min-w-0 flex-col gap-2">
 
+
+                             <button
+                              type="button"
+                              onClick={() => sendMessage(lead)}
+                              className={`${yellowBtn} bg-green-400 min-h-9 w-full gap-1 px-1.5 text-[11px]`}
+                            >
+
+                              <Bell size={12} className="shrink-0" />
+                              Send Message
+
+                            </button>
+
+
                             <button
                               type="button"
                               onClick={() => openReminder(lead)}
@@ -1244,6 +1279,9 @@ catch(e){
 
                              <button
                               type="button"
+                              onClick={()=>{
+                                setConverted(lead._id)
+                              }}
                            
                               className={`${btn} min-h-9 w-full gap-1 px-1.5 text-[12px] text-bold text-neutral-600 hover:text-green-600`}
                             >

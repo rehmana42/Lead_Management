@@ -4,8 +4,8 @@ import { useNavigate } from "react-router-dom";
 export  const LeadContext=createContext()
 
 const LeadContextProvider=(props)=>{
-    // const backendUrl='http://localhost:3000/api'
-    const backendUrl='https://leadgeneration-1.onrender.com/api'
+    const backendUrl='http://localhost:3000/api'
+    // const backendUrl='https://leadgeneration-1.onrender.com/api'
 
 //set cookies 
 const setCookie=(name,value)=>{

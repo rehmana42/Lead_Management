@@ -1,15 +1,7 @@
-
-
-
-
-
-
-
 import express from  'express'
 import {config} from 'dotenv'
 import cors from 'cors'
 import { ConnectDB } from './config/mongoDB.js'
-
 import corn from "node-cron"
 import { mainRouter } from './routes/mainRoute.js'
 import { connectWhatsApp } from './config/tp.js'
@@ -43,16 +35,6 @@ ConnectDB()
 //Pm Formate
 // "27 16 * * *" 
 
-// corn.schedule("27 16 * * *",()=>{
-//   try{
-//     console.log("hii bolte ")
-//  checkDueDate()
-//   }
-//   catch(e){
-//     console.log(e.message)
-//   }
-
-// },)
 
 
 //  corn.schedule(
@@ -67,10 +49,10 @@ ConnectDB()
 
 
 //        // Check WhatsApp connection
-//         if (!isWhatsAppReady()) {
-//           console.log("WhatsApp is not connected. Skipping cron.");
-//           return;
-//         }
+//         // if (!isWhatsAppReady()) {
+//         //   console.log("WhatsApp is not connected. Skipping cron.");
+//         //   return;
+//         // }
 
 //         // Send pending messages
 //         await sendMessage();
@@ -132,8 +114,6 @@ const startServer =
 startServer();
 
 // creating the connection 
-
-console.log(process.env.MONGO_URL)
 app.get('/',(req,res)=>{
     res.json('landing page is here ')
 })

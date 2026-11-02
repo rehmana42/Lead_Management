@@ -57,7 +57,6 @@ export const getWhatsAppQRController =
             const qr =
                 getWhatsAppQR();
 
-                console.log(qr)
             if (!qr) {
 
                 return res.status(404).json({
@@ -188,25 +187,42 @@ export const reconnectWhatsAppController =
 
 
 
+
+let addMemberInProgress = false;
+
 export const addMember = async (req, res) => {
+    if (addMemberInProgress) {
+        return res.status(409).json({
+            success: false,
+            message: "Another group update is already running"
+        });
+    }
+
+    addMemberInProgress = true;
+
     try {
         const { phone } = req.body;
+
+        // ========================================
+        // VALIDATE WHATSAPP CONNECTION
+        // ========================================
 
         if (!isWhatsAppReady()) {
             return res.status(503).json({
                 success: false,
-                message: "WhatsApp is not connected",
+                message: "WhatsApp is not connected"
             });
         }
 
         if (!Array.isArray(phone) || phone.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: "Phone must be a non-empty array",
+                message: "Phone must be a non-empty array"
             });
         }
 
         const sock = getWhatsApp();
+
         const groupId = "120363429442282527@g.us";
 
         // ========================================
@@ -215,57 +231,125 @@ export const addMember = async (req, res) => {
 
         const metadata = await sock.groupMetadata(groupId);
 
-        const existingMembers = new Set(
-            metadata.participants.flatMap(member =>
-                [member.id, member.phoneNumber]
-                    .filter(Boolean)
-            )
+        const existingMembers = new Set();
+
+        for (const member of metadata.participants) {
+            if (member.id) {
+                existingMembers.add(member.id);
+            }
+
+            if (member.phoneNumber) {
+                existingMembers.add(member.phoneNumber);
+            }
+        }
+
+        console.log(
+            "Existing group members:",
+            existingMembers.size
         );
 
         // ========================================
-        // FILTER NUMBERS
+        // NORMALIZE PHONE NUMBERS
         // ========================================
 
         const participants = [];
         const skipped = [];
         const seen = new Set();
 
+        const lidMapping = sock.signalRepository?.lidMapping;
+
         for (const number of phone) {
-            let clean = String(number ?? "").replace(/\D/g, "");
+            let clean = String(number ?? "")
+                .replace(/\D/g, "");
 
             // Add Indian country code
             if (clean.length === 10) {
                 clean = `91${clean}`;
             }
 
-            // Skip invalid numbers
+            // Validate Indian mobile number
             if (!/^91[6-9]\d{9}$/.test(clean)) {
                 skipped.push({
                     number,
                     reason: "Invalid mobile number"
                 });
+
                 continue;
             }
 
             const jid = `${clean}@s.whatsapp.net`;
 
-            // Skip duplicates
+            // ========================================
+            // CHECK DUPLICATE INPUT
+            // ========================================
+
             if (seen.has(jid)) {
                 skipped.push({
                     number,
-                    reason: "Duplicate number"
+                    reason: "Duplicate number in request"
                 });
+
                 continue;
             }
 
             seen.add(jid);
 
-            // Skip existing group members
-            if (existingMembers.has(jid)) {
+            // ========================================
+            // RESOLVE PHONE JID TO LID
+            // ========================================
+
+            let lid = null;
+
+            try {
+                if (
+                    typeof lidMapping?.getLIDForPN === "function"
+                ) {
+                    lid = await lidMapping.getLIDForPN(jid);
+                }
+            } catch (error) {
+                console.warn(
+                    "LID mapping failed:",
+                    error.message
+                );
+            }
+
+            // ========================================
+            // CHECK EXISTING GROUP MEMBER
+            // ========================================
+
+            const alreadyExists =
+                existingMembers.has(jid) ||
+                (lid && existingMembers.has(lid));
+
+            if (alreadyExists) {
                 skipped.push({
                     number,
                     reason: "Already in group"
                 });
+
+                continue;
+            }
+
+            // If group metadata contains unresolved LIDs,
+            // we cannot safely confirm non-membership.
+            // Avoid attempting to re-add unknown members.
+            const unresolvedMembers =
+                metadata.participants.some(
+                    member =>
+                        member.id?.endsWith("@lid") &&
+                        !member.phoneNumber
+                );
+
+            if (
+                unresolvedMembers &&
+                !lidMapping?.getLIDForPN
+            ) {
+                skipped.push({
+                    number,
+                    reason:
+                        "Cannot verify membership: LID mapping unavailable"
+                });
+
                 continue;
             }
 
@@ -279,16 +363,20 @@ export const addMember = async (req, res) => {
         if (participants.length === 0) {
             return res.status(200).json({
                 success: true,
-                message: "No new members to add",
-                skipped,
+                message: "No verified new members to add",
                 added: [],
-                failed: []
+                failed: [],
+                skipped
             });
         }
 
         // ========================================
-        // ADD NEW MEMBERS
+        // ADD MEMBERS
         // ========================================
+
+        console.log(
+            `Attempting to add ${participants.length} members`
+        );
 
         const result = await sock.groupParticipantsUpdate(
             groupId,
@@ -296,28 +384,67 @@ export const addMember = async (req, res) => {
             "add"
         );
 
-        const added = result.filter(
-            item => String(item.status) === "200"
+        console.log(
+            "Group update response:",
+            JSON.stringify(result, null, 2)
         );
 
-        const failed = result.filter(
-            item => String(item.status) !== "200"
+        // ========================================
+        // PROCESS RESULTS
+        // ========================================
+
+        const added = [];
+        const failed = [];
+
+        for (const item of result ?? []) {
+            if (String(item.status) === "200") {
+                added.push(item);
+            } else {
+                failed.push(item);
+            }
+        }
+
+        const rateLimited = failed.some(
+            item => String(item.status) === "429"
         );
 
-        return res.status(200).json({
-            success: added.length > 0,
-            message: `${added.length} added, ${failed.length} failed, ${skipped.length} skipped`,
+        return res.status(rateLimited ? 429 : 200).json({
+            success: !rateLimited && failed.length === 0,
+            rateLimited,
+
+            message: rateLimited
+                ? "WhatsApp rate limit reached. Stop additions and try again later."
+                : `${added.length} added, ${failed.length} failed, ${skipped.length} skipped`,
+
+            totalReceived: phone.length,
+            totalAttempted: participants.length,
+
             added,
             failed,
             skipped
         });
 
     } catch (error) {
-        console.error("Add member error:", error.message);
+        const status =
+            error.output?.statusCode ||
+            error.statusCode ||
+            500;
 
-        return res.status(500).json({
+        console.error("Add member error:", {
+            message: error.message,
+            status,
+            data: error.data,
+            output: error.output
+        });
+
+        return res.status(status === 429 ? 429 : 500).json({
             success: false,
+            rateLimited: status === 429,
             message: error.message
         });
+
+    } finally {
+        addMemberInProgress = false;
     }
 };
+

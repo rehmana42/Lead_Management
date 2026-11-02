@@ -25,6 +25,7 @@ import Register from "./Pages/Register";
 
 import { LeadContext } from "./Context/LeadContext";
 import ProtectedRoute from "./Component/ProtectedRoute";
+import Convert from "./Pages/Convert";
 
 // ================= DASHBOARD LAYOUT =================
 
@@ -109,12 +110,19 @@ const App = () => {
             path="/dashboard"
             element={<LeadDashboard />}
           />
+          
+<Route
+path="/converted"
+element={<Convert/>}
+      />
 
           <Route
             path="/generatelead"
             element={<LeadGeneration />}
           />
 
+
+      
           <Route
             path="/home"
             element={<Home />}

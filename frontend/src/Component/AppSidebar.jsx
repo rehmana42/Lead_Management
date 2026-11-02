@@ -60,6 +60,12 @@ export function AppSidebar() {
       icon: Home,
       path: "/",
     },
+     {
+      title: "Converted leads ",
+      icon: Home,
+      path: "/converted",
+    },
+
 
     ...(role === "true"
       ? [

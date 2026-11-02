@@ -1,6 +1,7 @@
 import puppeteer from "puppeteer";
 import { LeadModels } from "../models/LeadModel.js";
 import { UserModel } from "../models/UserModel.js";
+import { isWhatsAppReady, whatsapp } from "../config/whatsapp.js";
 
 
 
@@ -624,12 +625,140 @@ export const notIntrested=async(req,res)=>{
 export const setConverted=async(req,res)=>{
   try{
     const {id}=req.body
-     await LeadModels.findOneAndUpdate({_id:id},{$set:{converted:false}})
-
+    console.log(`id bolte lala chori  ${id}` )
+     const updatedlead=await LeadModels.findOneAndUpdate({_id:id},{$set:{converted:true}}, {returnDocument: 'after'})
+ console.log(updatedlead)
      res.json({success:true, data:"lead converted successfully "})
   }
    catch(e){
     console.log(e.message )
     res.json({success:false, error:e.message})
    }
+}
+
+
+
+
+// ------------------ send whatsApp message 
+export const SendMessage=async(req,res)=>{
+    try{
+      const {lead}=req.body
+      const leads =await LeadModels.findOne({_id:lead._id})
+      if(leads.msgSend === true){
+return res.json({success:false, error:'Message ALready sended'});
+      }
+       
+        if (!isWhatsAppReady()) {
+          
+          return res.json({success:false, error:'whatsapp is not connected'});
+        }
+
+
+           if (!leads.phone) {
+          console.log("Phone missing:", lead.name);
+          return res.json({success:false, error:"number is not provided"})
+      
+        }
+
+        
+                let phone = String(leads.phone)
+          .replace(/\D/g, "")     // Remove spaces, +, hyphens, etc.
+          .replace(/^0+/, "");    // Remove all starting zeros
+        
+        console.log(phone);
+        
+                // Add India country code if necessary
+                if (phone.length === 10) {
+                  phone = `91${phone}`;
+                }
+        
+                if (!/^91[6-9]\d{9}$/.test(phone)) {
+                 return res.json({success:false, error:"Phone number is invalid "})
+                  
+                }
+        
+                // ==================================
+                // CHECK WHATSAPP NUMBER
+                // ==================================
+        
+                const jid = `${phone}@s.whatsapp.net`;
+        
+                console.log("Checking number:", jid);
+        
+                const registered = await whatsapp.onWhatsApp(jid);
+        
+                console.log("WhatsApp registration:", registered);
+        
+                if (!registered?.[0]?.exists) {
+                  console.log("Number not registered:", phone);
+                   return res.json({success:false, error:"number is not registered"})
+                }
+        
+                const recipientJid = registered[0].jid || jid;
+        
+                // ==================================
+                // GENERATE AI MESSAGE
+                // ==================================
+        
+                const message1 =`Hello ${lead.name} 👋
+
+I came across your business, ${leads.name}, and wanted to connect.
+
+We help local businesses grow digitally by developing professional websites, e-commerce stores, and custom software for billing, inventory, customer management, and more.
+
+Our goal is simple: help you reach more customers, simplify daily operations, and grow your business.
+
+Would you be interested in a quick discussion about how we can help your business?
+
+ For More Imformation please visits My website 
+
+ https://rehmandeveloper.vercel.app/
+`
+
+
+
+        
+               
+        
+              
+        
+                // ==================================
+                // SEND MESSAGE
+                // ==================================
+        
+                console.log("Sending to:", recipientJid);
+        
+                const result = await whatsapp.sendMessage(
+                  recipientJid,
+                  {
+                    text: message1,
+                  }
+                );
+        
+                console.log("Baileys response:", result);
+
+              
+               
+                
+                          await LeadModels.findByIdAndUpdate(
+                            lead._id,
+                            {
+                              $set: {
+                                msgSend: true,
+                              },
+                            }
+                          );
+                
+                         
+                
+                          console.log("Message submitted:", lead.name);
+                
+                        
+                          res.json({success:true , data:"message send success"})
+
+    }
+    catch(e){
+      console.log(e.message )
+      res.json({success:false, error :e.message})
+    }
 }
