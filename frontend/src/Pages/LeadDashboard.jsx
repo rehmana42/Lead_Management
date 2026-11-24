@@ -19,6 +19,8 @@ import {
   Download,
   ThumbsUp,
   ThumbsDown,
+  PhoneCall,
+  PhoneCallIcon,
 } from "lucide-react";
 
 
@@ -115,6 +117,7 @@ export default function LeadsDashboard() {
         lead.website,
         lead.rating,
         lead.mapsUrl,
+        lead.callNotReceived
       ].some((value) =>
         String(value || "")
           .toLowerCase()
@@ -255,11 +258,7 @@ export default function LeadsDashboard() {
   
 
 
-useEffect(()=>{
-  console.log(leads)
-  console.log(leads.filter((e)=>e.converted === false).length)
- 
-},[leads])
+
 
 
 // converting the lead
@@ -269,7 +268,7 @@ try{
   console.log(id)
  const  response=await axios.post(`${backendUrl}/set-converted`,{id},{headers:{token}})
  
-console.log(response)
+
  if(response.data.success ===true){
   toast.success(" lead converted success full")
   setLoading(false)
@@ -283,6 +282,32 @@ finally{
   setLoading(false)
 }
 
+}
+
+useEffect(()=>{
+  leads.forEach((e)=>{
+    console.log(e)
+  })
+},[leads])
+
+const setCallNotReceived=async(id)=>{
+  try{
+    setLoading(true)
+    const response=await axios.post(`${backendUrl}/laude`,{id:id},{headers:{token}})
+    console.log(response)
+    if(response?.data?.success === true){
+      toast.success("updated success")
+    
+      setLoading(false)
+      await getLeads()
+    }
+  }
+  catch(e){
+    toast.error(e.message)
+  }
+  finally{
+    setLoading(false)
+  }
 }
 
 
@@ -364,7 +389,7 @@ const sendMessage =async(lead)=>{
     console.log(response)
     if(response?.data?.success ===true){
       toast.success("message send successfully")
-      // window.location.reload()
+      await getLeads()
     }
     else{
       toast.error(response?.data?.error)
@@ -869,6 +894,20 @@ const sendMessage =async(lead)=>{
                         </p>
 
                       </div>
+                          {/* Not recieve call */}
+
+                       <div className="flex items-start gap-2">
+
+                        <PhoneCallIcon
+                          size={14}
+                          className="mt-0.5 shrink-0 text-neutral-500"
+                        />
+
+                        <p className="min-w-0 break-words text-xs leading-5 text-neutral-600">
+                          {lead?.callNotReceived ===true ?'Call Not Received':"not Called"}
+                        </p>
+
+                      </div>
 
                       {/* REMINDER */}
 
@@ -965,6 +1004,14 @@ const sendMessage =async(lead)=>{
                         <Trash2 size={13} />
                         Not Interested
                       </button>
+                      <button
+                        type="button"
+                        onClick={()=>{setCallNotReceived(lead?._id)}}
+                        className={`${btn} min-h-10 px-2 text-neutral-600 hover:text-red-600`}
+                      >
+                        <PhoneCall size={13} />
+                        Not Received
+                      </button>
 
                         <button
                          onClick={()=>{
@@ -991,7 +1038,7 @@ const sendMessage =async(lead)=>{
 
               <div className="hidden w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain lg:block">
 
-                <table className="w-full min-w-[1100px] table-fixed border-collapse text-left">
+                <table className="w-full min-w-[1100px]  border-collapse text-left">
 
                   {/* FIXED COLUMN WIDTHS */}
 
@@ -1003,7 +1050,7 @@ const sendMessage =async(lead)=>{
                     <col style={{ width: "22%" }} />
                     <col style={{ width: "12%" }} />
                     <col style={{ width: "11%" }} />
-                    <col style={{ width: "13%" }} />
+                    <col style={{ width: "20%" }} />
                   </colgroup>
 
                   {/* TABLE HEADER */}
@@ -1018,6 +1065,7 @@ const sendMessage =async(lead)=>{
                         "Phone",
                         "Rating",
                         "Address",
+                        "Not Received",
                         "Reminder",
                         "Links",
                         "Actions",
@@ -1100,7 +1148,7 @@ const sendMessage =async(lead)=>{
                                 className="shrink-0"
                               />
 
-                              <span className="min-w-0 break-all tabular-nums">
+                              <span className="min-w-0  tabular-nums">
                                 {lead.phone}
                               </span>
 
@@ -1151,6 +1199,20 @@ const sendMessage =async(lead)=>{
 
                             <p className="whitespace-normal break-words text-[11px] leading-[18px] text-neutral-600">
                               {cleanAddress(lead.address)}
+                            </p>
+
+                          </div>
+
+                        </td>
+
+
+                            {/* not received section */}
+                          <td className={tdStyle}>
+
+                          <div className="w-full min-w-0 rounded-lg border border-[#e0dcd1]  px-2.5 py-2.5 shadow-inner">
+
+                            <p className="whitespace-normal break-words text-[11px] leading-[18px] text-neutral-600">
+                              {lead.callNotReceived === true? "Call not Received":"Not Called"}
                             </p>
 
                           </div>
@@ -1277,6 +1339,17 @@ const sendMessage =async(lead)=>{
                             </button>
 
 
+
+                              <button
+                              type="button"
+                              onClick={() => setCallNotReceived(lead?._id)}
+                              className={`${btn} min-h-9 w-full gap-1 px-1.5 text-[10px] text-neutral-600 hover:text-red-600`}
+                            >
+
+                              <Trash2 size={12} className="shrink-0" />
+                              not Received
+
+                            </button> 
                              <button
                               type="button"
                               onClick={()=>{

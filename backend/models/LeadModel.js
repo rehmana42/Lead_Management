@@ -8,6 +8,10 @@ import { type } from "os";
     address:{type:String},
     rating:{type:String},
     mapsUrl:{type:String},
+    callNotReceived:{
+      type:Boolean,
+      default:false
+    },
     msgSend:{type:Boolean, default:false},
     reminder:{type:String, default:null},
     reminderSend:{type:Boolean, default:false},

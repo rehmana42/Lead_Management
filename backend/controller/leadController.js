@@ -7,25 +7,19 @@ import { isWhatsAppReady, whatsapp } from "../config/whatsapp.js";
 
 
 
+
 export const GenerateLead = async (req, res) => {
   let browser;
 
   const sleep = (ms) =>
     new Promise((resolve) => setTimeout(resolve, ms));
 
-  const startTime = Date.now();
-
   try {
     const { business, place, Limit } = req.query;
 
-    // Default: 40 businesses, maximum: 200
     const requestedLimit = Number.parseInt(Limit, 10);
-
     const limit = Math.min(
-      Math.max(
-        Number.isNaN(requestedLimit) ? 40 : requestedLimit,
-        1
-      ),
+      Math.max(Number.isNaN(requestedLimit) ? 40 : requestedLimit, 1),
       200
     );
 
@@ -41,24 +35,12 @@ export const GenerateLead = async (req, res) => {
       });
     }
 
-    console.log("Business:", business);
-    console.log("Place:", place);
-    console.log("Business limit:", limit);
-
-    /*
-    |--------------------------------------------------------------------------
-    | 1. Launch optimized browser
-    |--------------------------------------------------------------------------
-    */
-
     browser = await puppeteer.launch({
       headless: true,
-
       defaultViewport: {
         width: 1080,
         height: 1024,
       },
-
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
@@ -67,14 +49,11 @@ export const GenerateLead = async (req, res) => {
       ],
     });
 
-    // Optimize page loading
     const optimizePage = async (page) => {
       await page.setRequestInterception(true);
 
       page.on("request", (request) => {
-        const blocked = ["image", "font", "media"];
-
-        if (blocked.includes(request.resourceType())) {
+        if (["image", "font", "media"].includes(request.resourceType())) {
           request.abort();
         } else {
           request.continue();
@@ -86,7 +65,6 @@ export const GenerateLead = async (req, res) => {
     };
 
     const page = await browser.newPage();
-
     await optimizePage(page);
 
     const query = `${business.trim()} in ${place.trim()}`;
@@ -99,69 +77,41 @@ export const GenerateLead = async (req, res) => {
       }
     );
 
-    console.log("Google Maps opened...");
-
-    // Wait only until results are available
     await page.waitForSelector(
       '[role="feed"] a[href*="/maps/place/"]',
-      {
-        timeout: 15000,
-      }
+      { timeout: 15000 }
     );
 
-    /*
-    |--------------------------------------------------------------------------
-    | 2. Collect business links (optimized scrolling)
-    |--------------------------------------------------------------------------
-    */
-
-    const restaurantMap = new Map();
-
+    // Collect business links
+    const businessMap = new Map();
     let unchangedCount = 0;
 
-    console.log("Collecting business links...");
-
-    while (
-      restaurantMap.size < limit &&
-      unchangedCount < 6
-    ) {
-      const restaurantLinks = await page.$$eval(
+    while (businessMap.size < limit && unchangedCount < 6) {
+      const links = await page.$$eval(
         '[role="feed"] a[href*="/maps/place/"]',
-        (links) =>
-          links.map((link) => ({
+        (elements) =>
+          elements.map((link) => ({
             name: link.getAttribute("aria-label"),
             url: link.href,
           }))
       );
 
-      const previousCount = restaurantMap.size;
+      const previousCount = businessMap.size;
 
-      for (const restaurant of restaurantLinks) {
+      for (const item of links) {
         if (
-          restaurant.url &&
-          restaurant.url.includes("/maps/place/") &&
-          !restaurantMap.has(restaurant.url)
+          item.url &&
+          item.url.includes("/maps/place/") &&
+          !businessMap.has(item.url)
         ) {
-          restaurantMap.set(
-            restaurant.url,
-            restaurant
-          );
-
-          if (restaurantMap.size >= limit) {
-            break;
-          }
+          businessMap.set(item.url, item);
         }
+
+        if (businessMap.size >= limit) break;
       }
 
-      console.log(
-        `Collected ${restaurantMap.size}/${limit} businesses`
-      );
+      if (businessMap.size >= limit) break;
 
-      if (restaurantMap.size >= limit) {
-        break;
-      }
-
-      // Check whether Google Maps reached the end
       const reachedEnd = await page.evaluate(() => {
         const feed = document.querySelector('[role="feed"]');
 
@@ -175,12 +125,8 @@ export const GenerateLead = async (req, res) => {
         );
       });
 
-      if (reachedEnd) {
-        console.log("Reached end of Google Maps results.");
-        break;
-      }
+      if (reachedEnd) break;
 
-      // Scroll Google Maps results panel
       const scrolled = await page.evaluate(() => {
         const feed = document.querySelector('[role="feed"]');
 
@@ -194,121 +140,75 @@ export const GenerateLead = async (req, res) => {
         return true;
       });
 
-      if (!scrolled) {
-        console.log("Google Maps results panel not found.");
-        break;
-      }
+      if (!scrolled) break;
 
-      // Wait for lazy loading
       await sleep(900);
 
-      // Collect newly loaded links immediately after scrolling
       const newLinks = await page.$$eval(
         '[role="feed"] a[href*="/maps/place/"]',
-        (links) =>
-          links.map((link) => ({
+        (elements) =>
+          elements.map((link) => ({
             name: link.getAttribute("aria-label"),
             url: link.href,
           }))
       );
 
-      for (const restaurant of newLinks) {
+      for (const item of newLinks) {
         if (
-          restaurant.url &&
-          restaurant.url.includes("/maps/place/") &&
-          !restaurantMap.has(restaurant.url)
+          item.url &&
+          item.url.includes("/maps/place/") &&
+          !businessMap.has(item.url)
         ) {
-          restaurantMap.set(
-            restaurant.url,
-            restaurant
-          );
-
-          if (restaurantMap.size >= limit) {
-            break;
-          }
+          businessMap.set(item.url, item);
         }
+
+        if (businessMap.size >= limit) break;
       }
 
-      if (restaurantMap.size === previousCount) {
+      if (businessMap.size === previousCount) {
         unchangedCount++;
-
-        console.log(
-          `No new results (${unchangedCount}/6)`
-        );
       } else {
         unchangedCount = 0;
       }
     }
 
-    const uniqueRestaurants = [
-      ...restaurantMap.values(),
+    const uniqueBusinesses = [
+      ...businessMap.values(),
     ].slice(0, limit);
 
-    console.log(
-      `Total businesses collected: ${uniqueRestaurants.length}`
-    );
-
-    // Close search page to free memory
     await page.close();
 
-    /*
-    |--------------------------------------------------------------------------
-    | 3. Extract individual business details
-    |--------------------------------------------------------------------------
-    */
-
-    const scrapeRestaurant = async (
-      workerPage,
-      restaurant
-    ) => {
-      await workerPage.goto(restaurant.url, {
+    // Extract business details
+    const scrapeBusiness = async (workerPage, business) => {
+      await workerPage.goto(business.url, {
         waitUntil: "domcontentloaded",
         timeout: 20000,
       });
 
-      // Wait for the actual business heading
       await workerPage.waitForSelector("h1", {
         timeout: 8000,
       });
 
-      // Wait for business information instead of fixed sleep
       await workerPage
         .waitForFunction(
-          () => {
-            return (
-              document.querySelector(
-                '[data-item-id="address"]'
-              ) ||
-              document.querySelector(
-                '[data-item-id="authority"]'
-              ) ||
-              document.querySelector(
-                '[data-item-id^="phone:tel:"]'
-              )
-            );
-          },
-          {
-            timeout: 4000,
-          }
+          () =>
+            document.querySelector('[data-item-id^="phone:tel:"]') ||
+            document.querySelector('a[href^="tel:"]'),
+          { timeout: 6000 }
         )
         .catch(() => {});
 
       const details = await workerPage.evaluate(() => {
         const getText = (selector) => {
-          const element =
-            document.querySelector(selector);
-
+          const element = document.querySelector(selector);
           return element?.innerText?.trim() || null;
         };
 
         const getLink = (selector) => {
-          const element =
-            document.querySelector(selector);
-
+          const element = document.querySelector(selector);
           return element?.href || null;
         };
 
-        // Improved phone extraction
         const phoneElement = document.querySelector(
           '[data-item-id^="phone:tel:"]'
         );
@@ -317,10 +217,12 @@ export const GenerateLead = async (req, res) => {
           document
             .querySelector('a[href^="tel:"]')
             ?.getAttribute("href")
-            ?.replace(/^tel:/i, "") ||
+            ?.replace(/^tel:/i, "")
+            ?.trim() ||
           phoneElement
             ?.getAttribute("data-item-id")
-            ?.replace(/^phone:tel:/, "") ||
+            ?.replace(/^phone:tel:/i, "")
+            ?.trim() ||
           null;
 
         const ratingElement = document.querySelector(
@@ -329,134 +231,64 @@ export const GenerateLead = async (req, res) => {
 
         return {
           name: getText("h1"),
-
           phone,
-
-          website: getLink(
-            'a[data-item-id="authority"]'
-          ),
-
-          address: getText(
-            '[data-item-id="address"]'
-          ),
-
-          rating:
-            ratingElement?.getAttribute(
-              "aria-label"
-            ) || null,
+          website: getLink('a[data-item-id="authority"]'),
+          address: getText('[data-item-id="address"]'),
+          rating: ratingElement?.getAttribute("aria-label") || null,
         };
       });
 
       return {
         ...details,
-        name: details.name || restaurant.name,
-        mapsUrl: restaurant.url,
+        name: details.name || business.name,
+        mapsUrl: business.url,
       };
     };
 
-    /*
-    |--------------------------------------------------------------------------
-    | 4. Parallel scraping (3 workers)
-    |--------------------------------------------------------------------------
-    */
-
-    const results = new Array(uniqueRestaurants.length);
-
+    // Parallel scraping
+    const results = [];
     const CONCURRENCY = 3;
 
     let currentIndex = 0;
-    let completed = 0;
 
-    console.log("Starting parallel scraping...");
-
-    const worker = async (workerId) => {
+    const worker = async () => {
       const workerPage = await browser.newPage();
-
       await optimizePage(workerPage);
 
       try {
         while (true) {
-          // Get next business index
           const index = currentIndex++;
 
-          if (index >= uniqueRestaurants.length) {
-            break;
-          }
+          if (index >= uniqueBusinesses.length) break;
 
-          const restaurant = uniqueRestaurants[index];
-
-          console.log(
-            `[Worker ${workerId}] Processing ${index + 1}/${uniqueRestaurants.length}`
-          );
+          const business = uniqueBusinesses[index];
 
           try {
-            const details = await scrapeRestaurant(
+            const details = await scrapeBusiness(
               workerPage,
-              restaurant
+              business
             );
 
-            results[index] = details;
-
-            console.log(
-              `[Worker ${workerId}] Success: ${details.name}`
-            );
-          } catch (error) {
-            console.error(
-              `[Worker ${workerId}] Failed: ${restaurant.name || restaurant.url}`,
-              error.message
-            );
-
-            results[index] = {
-              name: restaurant.name || null,
-              phone: null,
-              website: null,
-              address: null,
-              rating: null,
-              mapsUrl: restaurant.url,
-              error: error.message,
-            };
+            // Only save businesses having a phone number
+            if (details.phone) {
+              results.push(details);
+            }
+          } catch {
+            // Skip businesses that fail to load or have no extracted details
           }
-
-          completed++;
-
-          console.log(
-            `Progress: ${completed}/${uniqueRestaurants.length}`
-          );
         }
       } finally {
         await workerPage.close().catch(() => {});
       }
     };
 
-    // Start workers simultaneously
     const workerCount = Math.min(
       CONCURRENCY,
-      uniqueRestaurants.length
+      uniqueBusinesses.length
     );
 
-    const workers = Array.from(
-      { length: workerCount },
-      (_, index) => worker(index + 1)
-    );
-
-    await Promise.all(workers);
-
-    /*
-    |--------------------------------------------------------------------------
-    | 5. Return final results
-    |--------------------------------------------------------------------------
-    */
-
-    const executionTime = (
-      (Date.now() - startTime) / 1000
-    ).toFixed(2);
-
-    console.log(
-      `Finished. Processed ${results.length} businesses.`
-    );
-
-    console.log(
-      `Total execution time: ${executionTime} seconds`
+    await Promise.all(
+      Array.from({ length: workerCount }, () => worker())
     );
 
     return res.status(200).json({
@@ -466,26 +298,14 @@ export const GenerateLead = async (req, res) => {
       leads: results,
     });
 
-  } catch (error) {
-    console.error(
-      "GenerateLead error:",
-      error.message
-    );
-
+  } catch {
     return res.status(500).json({
       success: false,
       message: "Failed to generate leads.",
-      error: error.message,
     });
-
   } finally {
     if (browser) {
-      await browser.close().catch((error) => {
-        console.error(
-          "Browser close error:",
-          error.message
-        );
-      });
+      await browser.close().catch(() => {});
     }
   }
 };
@@ -700,23 +520,50 @@ return res.json({success:false, error:'Message ALready sended'});
                 // GENERATE AI MESSAGE
                 // ==================================
         
-                const message1 =`Hello ${lead.name} 👋
+                const message1 =`
+                Hello ${lead.name} 👋
 
-I came across your business, ${leads.name}, and wanted to connect.
+I came across your company and wanted to connect.
 
-We help local businesses grow digitally by developing professional websites, e-commerce stores, and custom software for billing, inventory, customer management, and more.
+I'm a Full Stack Developer specializing in building modern, responsive web applications, business management systems, CRM solutions, and custom software.
 
-Our goal is simple: help you reach more customers, simplify daily operations, and grow your business.
+I work with technologies like React.js, Node.js, Express.js, MongoDB, and Flutter.
 
-Would you be interested in a quick discussion about how we can help your business?
+I'd love to explore opportunities where I can contribute to your company's technical projects, help build scalable solutions, and solve real-world business challenges.
 
- For More Imformation please visits My website 
+Are you currently looking for a Full Stack Developer or open to collaborating with one?
 
- https://rehmandeveloper.vercel.app/
-`
+For more information about my skills and projects, please visit my portfolio:
 
+https://rehmandeveloper.vercel.app/?test=98765
 
+Looking forward to connecting with you! 🤝
+                `
 
+const message=`Hello ${lead.name} 👋
+
+I came across your business and wanted to connect with you.
+
+I help local businesses build a stronger digital presence and simplify their daily operations through technology.
+
+I can help you with:
+
+🌐 Professional Business Websites
+📱 Custom Web & Mobile Applications
+📊 Business Management Systems
+👥 CRM & Customer Management
+🤖 WhatsApp & Business Automation
+📈 Lead Generation & Digital Solutions
+
+My goal is to help businesses attract more customers, save time, reduce manual work, and grow more efficiently.
+
+I'd love to understand your business and explore how technology could help you improve your operations.
+
+Would you be interested in discussing some ideas for your business?
+
+Portfolio: https://rehmandeveloper.vercel.app/?test=98765
+
+Looking forward to connecting! 🤝`
         
                
         
@@ -731,10 +578,20 @@ Would you be interested in a quick discussion about how we can help your busines
                 const result = await whatsapp.sendMessage(
                   recipientJid,
                   {
-                    text: message1,
+                    text: message,
                   }
                 );
-        
+
+//                const result = await whatsapp.sendMessage(
+//                 recipientJid,
+//                 {
+//   document: {
+//     url: 'Abdul_fullstack_developer.pdf',
+//   },
+//   mimetype: 'application/pdf',
+//   fileName: 'Abdul_fullstack_developer.pdf',
+//   caption: message1
+// });
                 console.log("Baileys response:", result);
 
               
@@ -761,4 +618,26 @@ Would you be interested in a quick discussion about how we can help your busines
       console.log(e.message )
       res.json({success:false, error :e.message})
     }
+}
+
+
+
+// sect carllNotReceived
+export const setCallNotReceived=async(req,res)=>{
+  try{
+    const{id}=req.body
+    const updatedLead=await LeadModels.findByIdAndUpdate({_id:id},{
+      $set:{
+        callNotReceived:true
+      }
+    }, {returnDocument: 'after'})
+    console.log(updatedLead)
+    if(updatedLead){
+      return res.json({success:true,data:"Updated Successfully"})
+    }
+  }
+  catch(e){
+    res.json({success:false,error:e.message})
+    console.log(e.message)
+  }
 }
